@@ -10,7 +10,6 @@ NestJS application for integrating with Google Docs and Sheets APIs using OAuth 
    ```
 
 2. **Configure environment variables:**
-   - Copy `.env.example` to `.env`
    - Add your Google OAuth credentials:
      ```
      GOOGLE_CLIENT_ID=your_client_id_here
@@ -36,9 +35,6 @@ NestJS application for integrating with Google Docs and Sheets APIs using OAuth 
 # Development mode
 npm run start:dev
 
-# Production mode
-npm run build
-npm run start:prod
 ```
 
 ## API Endpoints
