@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive Picker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn:hover {
+            background: #3367d6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(66, 133, 244, 0.4);
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .selected-items {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+        .selected-items h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        .item {
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .item-icon {
+            font-size: 20px;
+        }
+        .item-info {
+            flex: 1;
+        }
+        .item-name {
+            font-weight: 500;
+            color: #333;
+        }
+        .item-type {
+            font-size: 12px;
+            color: #666;
+        }
+        .auth-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📁 Google Drive Picker</h1>
+        <p>Select folders and files from your Google Drive to share with the application.</p>
+        
+        <div id="authSection" class="auth-section">
+            <p>Please authenticate first to use the picker.</p>
+            <button class="btn" onclick="authenticate()">
+                🔐 Authenticate with Google
+            </button>
+        </div>
+
+        <button id="pickerBtn" class="btn" onclick="openPicker()" style="display: none;">
+            📂 Open Google Drive Picker
+        button>
+
+        <div id="status" class="status"></div>
+        
+        <div id="selectedItems" class="selected-items"></div>
+    </div>
+
+    <script>
+        let accessToken = null;
+        let pickerApiLoaded = false;
+        let apiKey = '';
+        let clientId = '';
+
+        // Load configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/picker/config');
+                const config = await response.json();
+                apiKey = config.apiKey;
+                clientId = config.clientId;
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // Load Google Picker API
+        function loadPickerApi() {
+            gapi.load('picker', () => {
+                pickerApiLoaded = true;
+                console.log('Picker API loaded');
+            });
+        }
+
+        // Check authentication status on page load
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/status');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    accessToken = data.accessToken;
+                    document.getElementById('authSection').style.display = 'none';
+                    document.getElementById('pickerBtn').style.display = 'inline-flex';
+                    showStatus('Authenticated successfully!', 'success');
+                }
+            } catch (error) {
+                console.log('Not authenticated yet');
+            }
+        }
+
+        function authenticate() {
+            window.location.href = '/auth/google';
+        }
+
+        function openPicker() {
+            if (!pickerApiLoaded || !accessToken) {
+                showStatus('Picker not ready. Please wait or re-authenticate.', 'error');
+                return;
+            }
+
+            if (!apiKey) {
+                showStatus('API Key not configured. Please add GOOGLE_API_KEY to .env', 'error');
+                return;
+            }
+
+            const picker = new google.picker.PickerBuilder()
+                .addView(
+                    new google.picker.DocsView()
+                        .setIncludeFolders(true)
+                        .setSelectFolderEnabled(true)
+                )
+                .setOAuthToken(accessToken)
+                .setDeveloperKey(apiKey)
+                .setCallback(pickerCallback)
+                .setTitle('Select Files or Folders')
+                .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+                .build();
+            
+            picker.setVisible(true);
+        }
+
+        function pickerCallback(data) {
+            if (data.action === google.picker.Action.PICKED) {
+                const items = data.docs;
+                displaySelectedItems(items);
+                sendSelectedItems(items);
+            } else if (data.action === google.picker.Action.CANCEL) {
+                showStatus('Picker cancelled', 'info');
+            }
+        }
+
+        function displaySelectedItems(items) {
+            const container = document.getElementById('selectedItems');
+            container.style.display = 'block';
+            
+            const itemsHtml = items.map(item => {
+                const icon = item.mimeType === 'application/vnd.google-apps.folder' ? '📁' : 
+                            item.mimeType === 'application/vnd.google-apps.document' ? '📄' :
+                            item.mimeType === 'application/vnd.google-apps.spreadsheet' ? '📊' : '📎';
+                
+                return `
+                    <div class="item">
+                        <span class="item-icon">${icon}</span>
+                        <div class="item-info">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-type">${item.mimeType.split('.').pop()}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <h3>Selected Items (${items.length})</h3>
+                ${itemsHtml}
+            `;
+        }
+
+        async function sendSelectedItems(items) {
+            try {
+                // Save selected items
+                const response = await fetch('/api/picker/selected', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ items })
+                });
+
+                const result = await response.json();
+                
+                // Check if any folders were selected and process them
+                const folders = items.filter(item => item.mimeType === 'application/vnd.google-apps.folder');
+                
+                if (folders.length > 0) {
+                    showStatus(`Processing ${folders.length} folder(s)...`, 'info');
+                    
+                    for (const folder of folders) {
+                        await processFolderContents(folder.id, folder.name);
+                    }
+                }
+                
+                showStatus(`Successfully saved ${items.length} item(s)`, 'success');
+            } catch (error) {
+                showStatus('Failed to save selected items', 'error');
+            }
+        }
+
+        async function processFolderContents(folderId, folderName) {
+            try {
+                const response = await fetch(`/api/folder/${folderId}/process`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    showStatus(`Error processing folder "${folderName}": ${data.error}`, 'error');
+                    return;
+                }
+                
+                console.log(`Folder "${folderName}" contents:`, data);
+                showStatus(`Processed folder "${folderName}" - ${data.totalItems} items found`, 'success');
+                
+                // Display folder contents
+                displayFolderContents(folderName, data.results);
+            } catch (error) {
+                showStatus(`Failed to process folder "${folderName}"`, 'error');
+            }
+        }
+
+        function displayFolderContents(folderName, contents) {
+            const container = document.getElementById('selectedItems');
+            
+            const contentsHtml = contents.map(item => {
+                const icon = item.type === 'folder' ? '📁' : 
+                            item.type === 'document' ? '📄' :
+                            item.type === 'spreadsheet' ? '📊' : '📎';
+                
+                return `
+                    <div class="item">
+                        <span class="item-icon">${icon}</span>
+                        <div class="item-info">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-type">${item.type}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const folderSection = `
+                <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 6px;">
+                    <h3>📁 ${folderName} Contents (${contents.length} items)</h3>
+                    ${contentsHtml}
+                </div>
+            `;
+            
+            container.innerHTML += folderSection;
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        // Initialize on page load
+        window.onload = async () => {
+            await loadConfig();
+            await checkAuth();
+        };
+    </script>
+    <script src="https://apis.google.com/js/api.js" onload="loadPickerApi()"></script>
+</body>
+</html>
