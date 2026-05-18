@@ -10,4 +10,5 @@ export class AppController {
     return this.appService.getHello();
   }
   @post()
+  auth(){}
 }
